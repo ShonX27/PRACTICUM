@@ -28,7 +28,6 @@ CHANNEL_COLORS = {
 FALLBACK_COLORS = ["#4a3aa7", "#e87ba4", "#e34948", "#008300"]
 
 STATUS_COLORS = {"Active": "#0ca30c", "Inactive": "#898781"}
-GOOD, BAD = "#0ca30c", "#d03b3b"
 
 CHART_FONT = dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#c3c2b7")
 SURFACE = "#161615"
@@ -73,23 +72,47 @@ donations_master, order_clean_final = load_data()
 st.markdown(
     """
     <style>
-    .kpi-card {
+    /* Card look for the container wrapping each stat button */
+    div[class*="st-key-card_"] {
+        position: relative;
         background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 14px;
-        padding: 18px 20px 16px 20px;
+        padding: 16px 18px 14px 18px;
         height: 108px;
+        transition: border-color 0.15s ease, background 0.15s ease;
     }
-    .kpi-icon { font-size: 20px; opacity: 0.85; }
+    div[class*="st-key-card_"]:hover {
+        border-color: rgba(255,255,255,0.25);
+        background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    }
+    div[class*="st-key-active_"] {
+        border-color: #2a78d6 !important;
+        box-shadow: 0 0 0 1px #2a78d6;
+    }
+    /* Invisible full-card button that captures the click */
+    div[class*="st-key-card_"] button {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        border: none;
+        margin: 0;
+        padding: 0;
+    }
+    .kpi-icon { font-size: 20px; opacity: 0.85; pointer-events: none; }
     .kpi-label {
         font-size: 12px; color: #9c9b95; text-transform: uppercase;
-        letter-spacing: .06em; margin-top: 4px;
+        letter-spacing: .06em; margin-top: 4px; pointer-events: none;
     }
     .kpi-value {
         font-size: 26px; font-weight: 700; color: #ffffff;
-        font-variant-numeric: tabular-nums; margin-top: 2px;
+        font-variant-numeric: tabular-nums; margin-top: 2px; pointer-events: none;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .kpi-sub { font-size: 12px; color: #6f6e69; margin-top: 2px; }
+    .kpi-sub { font-size: 12px; color: #6f6e69; margin-top: 2px; pointer-events: none; }
     .kpi-sub.up { color: #0ca30c; }
     .kpi-sub.down { color: #e66767; }
     .dash-title { font-size: 34px; font-weight: 800; margin-bottom: 0px; }
@@ -99,24 +122,28 @@ st.markdown(
         border-radius: 12px; padding: 14px 18px; font-size: 15px; color: #e7ecf3;
         margin-bottom: 14px;
     }
+    .section-hint { color: #6f6e69; font-size: 13px; margin: -4px 0 14px 2px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-def kpi(col, icon, label, value, sub="", sub_class=""):
-    col.markdown(
-        f"""
-        <div class="kpi-card">
-            <div class="kpi-icon">{icon}</div>
-            <div class="kpi-label">{label}</div>
-            <div class="kpi-value">{value}</div>
-            <div class="kpi-sub {sub_class}">{sub}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def kpi_button(col, key, icon, label, value, sub, sub_class, is_active):
+    card_key = f"card_{key}" + ("__active_" if is_active else "")
+    with col:
+        with st.container(key=card_key):
+            st.markdown(
+                f"""
+                <div class="kpi-icon">{icon}</div>
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value" title="{value}">{value}</div>
+                <div class="kpi-sub {sub_class}">{sub}</div>
+                """,
+                unsafe_allow_html=True,
+            )
+            clicked = st.button(f"View {label}", key=f"btn_{key}")
+    return clicked
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +177,7 @@ if date_range and isinstance(date_range, tuple) and len(date_range) == 2:
     filtered = filtered[~has_date | in_range]
 
 # ---------------------------------------------------------------------------
-# Shared aggregates (used by both the KPI row and the tabs)
+# Shared aggregates
 # ---------------------------------------------------------------------------
 dated = filtered.dropna(subset=["date"]).copy()
 if not dated.empty:
@@ -160,12 +187,8 @@ else:
     monthly = pd.DataFrame(columns=["month", "amount", "n"])
 
 by_channel_all = filtered.groupby("channel")["amount"].sum().sort_values(ascending=False)
-
 sorted_amounts = filtered["amount"].dropna().sort_values(ascending=False).reset_index(drop=True)
 
-# ---------------------------------------------------------------------------
-# KPI row
-# ---------------------------------------------------------------------------
 total = filtered["amount"].sum()
 count = len(filtered)
 avg = total / count if count else 0
@@ -179,7 +202,6 @@ else:
 active_n = int((order_clean_final["status"] == "Active").sum())
 total_fundraisers = len(order_clean_final)
 
-# Month-over-month delta on total raised
 if len(monthly) >= 2:
     last_amt, prev_amt = monthly["amount"].iloc[-1], monthly["amount"].iloc[-2]
     mom_pct = ((last_amt - prev_amt) / prev_amt * 100) if prev_amt else None
@@ -187,41 +209,52 @@ else:
     mom_pct = None
 
 if mom_pct is None:
-    total_sub, total_sub_class = f"{count} records", ""
+    total_sub, total_sub_class = "", ""
 else:
     arrow = "▲" if mom_pct >= 0 else "▼"
     total_sub_class = "up" if mom_pct >= 0 else "down"
     total_sub = f"{arrow} {abs(mom_pct):.1f}% vs prior month"
 
-# Leading channel
 if len(by_channel_all) > 0:
     top_channel_name = by_channel_all.index[0]
-    top_channel_share = by_channel_all.iloc[0] / by_channel_all.sum() * 100 if by_channel_all.sum() else 0
 else:
-    top_channel_name, top_channel_share = "n/a", 0
+    top_channel_name = "n/a"
+
+# ---------------------------------------------------------------------------
+# KPI row — each card is a clickable button that switches the section below
+# ---------------------------------------------------------------------------
+if "active_view" not in st.session_state:
+    st.session_state.active_view = "total"
 
 c1, c2, c3, c4, c5 = st.columns(5)
-kpi(c1, "💰", "Total Raised (CAD)", f"${total:,.0f}", total_sub, total_sub_class)
-kpi(c2, "🧾", "Avg. Donation", f"${avg:,.0f}", "per record")
-kpi(c3, "🔥", "Top 10% Share", f"{top10_share:.1f}%", "of total funds")
-kpi(c4, "🎯", "Active Fundraisers", f"{active_n}/{total_fundraisers}", "GoFundMe listings")
-kpi(c5, "🏆", "Top Channel", top_channel_name, f"{top_channel_share:.0f}% of total raised")
+if kpi_button(c1, "total", "💰", "Total Raised (CAD)", f"${total:,.0f}", total_sub, total_sub_class,
+              st.session_state.active_view == "total"):
+    st.session_state.active_view = "total"
+if kpi_button(c2, "avg", "🧾", "Avg. Donation", f"${avg:,.0f}", "", "",
+              st.session_state.active_view == "avg"):
+    st.session_state.active_view = "avg"
+if kpi_button(c3, "top10", "🔥", "Top 10% Share", f"{top10_share:.1f}%", "", "",
+              st.session_state.active_view == "top10"):
+    st.session_state.active_view = "top10"
+if kpi_button(c4, "fund", "🎯", "Active Fundraisers", f"{active_n}/{total_fundraisers}", "", "",
+              st.session_state.active_view == "fund"):
+    st.session_state.active_view = "fund"
+if kpi_button(c5, "channel", "🏆", "Top Channel", top_channel_name, "", "",
+              st.session_state.active_view == "channel"):
+    st.session_state.active_view = "channel"
 
 st.write("")
+view = st.session_state.active_view
 
 # ---------------------------------------------------------------------------
-# Tabs
+# Total Raised → Trend
 # ---------------------------------------------------------------------------
-tab_trend, tab_channel, tab_conc, tab_fund, tab_data = st.tabs(
-    ["📈 Trend", "🥧 Channels", "🔎 Concentration", "🎯 Fundraisers", "📋 Data"]
-)
-
-# --- Trend ---
-with tab_trend:
+if view == "total":
+    st.markdown("#### 📈 Total Raised Over Time")
     if not dated.empty:
-        view = st.radio("View", ["Total raised", "By channel"], horizontal=True, label_visibility="collapsed")
+        trend_mode = st.radio("View", ["Total raised", "By channel"], horizontal=True, label_visibility="collapsed")
 
-        if view == "Total raised":
+        if trend_mode == "Total raised":
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=monthly["month"], y=monthly["amount"],
@@ -267,8 +300,138 @@ with tab_trend:
     else:
         st.info("No dated records for the selected filters.")
 
-# --- Channels ---
-with tab_channel:
+# ---------------------------------------------------------------------------
+# Avg. Donation → distribution of individual donation amounts + raw data
+# ---------------------------------------------------------------------------
+elif view == "avg":
+    st.markdown("#### 🧾 Donation Size Distribution")
+    amt = filtered["amount"].dropna()
+    if len(amt):
+        fig = go.Figure(go.Histogram(
+            x=amt, nbinsx=30, marker=dict(color="#2a78d6", line=dict(color=SURFACE, width=1)),
+            hovertemplate="Amount: $%{x:,.0f}<br>Count: %{y}<extra></extra>",
+        ))
+        fig.add_vline(x=amt.mean(), line=dict(color="#eb6834", width=2, dash="dash"))
+        fig.update_layout(
+            height=400, margin=dict(l=10, r=10, t=10, b=10),
+            plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
+            xaxis=dict(title="Donation amount (CAD)", gridcolor=GRID, tickprefix="$"),
+            yaxis=dict(title="Number of records", gridcolor=GRID), bargap=0.05,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"Dashed line = average donation (\\${amt.mean():,.0f}). Median is \\${amt.median():,.0f}.")
+    else:
+        st.info("No donation amounts available for the selected filters.")
+
+    with st.expander("View & download raw records"):
+        st.dataframe(filtered.sort_values("date", na_position="last"), use_container_width=True, hide_index=True)
+        st.download_button(
+            "⬇ Download filtered data as CSV",
+            filtered.to_csv(index=False).encode("utf-8"),
+            file_name="filtered_donations.csv",
+            mime="text/csv",
+        )
+
+# ---------------------------------------------------------------------------
+# Top 10% Share → Concentration deep dive
+# ---------------------------------------------------------------------------
+elif view == "top10":
+    st.markdown("#### 🔥 Donation Concentration")
+    st.markdown('<div class="section-hint">Explore how concentrated giving is — how much of the total comes from a small share of donations.</div>', unsafe_allow_html=True)
+
+    pct = st.select_slider("Look at the top ___% of donations", options=[5, 10, 15, 20, 25, 30, 40, 50], value=10)
+
+    n = len(sorted_amounts)
+    if n > 0:
+        top_n = max(1, int(n * pct / 100))
+        top_share = sorted_amounts.head(top_n).sum() / sorted_amounts.sum() * 100
+
+        st.markdown(
+            f'<div class="callout">💡 The top <b>{pct}%</b> of donations '
+            f'(<b>{top_n}</b> of {n} records) account for <b>{top_share:.1f}%</b> of all funds raised.</div>',
+            unsafe_allow_html=True,
+        )
+
+        cum_pct_records = np.arange(1, n + 1) / n * 100
+        cum_pct_amount = sorted_amounts.cumsum() / sorted_amounts.sum() * 100
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=[0, 100], y=[0, 100], mode="lines", line=dict(color="#3a3a37", width=2, dash="dot"),
+            name="Perfectly even giving", hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=cum_pct_records, y=cum_pct_amount, mode="lines",
+            line=dict(color="#eb6834", width=2), fill="tonexty", fillcolor="rgba(235,104,52,0.10)",
+            name="Actual giving",
+            hovertemplate="Top %{x:.0f}% of donations<br>= %{y:.1f}% of funds<extra></extra>",
+        ))
+        fig.add_trace(go.Scatter(
+            x=[pct], y=[top_share], mode="markers", marker=dict(size=11, color="#eb6834", line=dict(width=2, color=SURFACE)),
+            showlegend=False, hovertemplate=f"Top {pct}% = {top_share:.1f}% of funds<extra></extra>",
+        ))
+        fig.update_layout(
+            height=420, margin=dict(l=10, r=10, t=10, b=10),
+            plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"),
+            xaxis=dict(title="Cumulative % of donations (largest first)", gridcolor=GRID, ticksuffix="%", range=[0, 100]),
+            yaxis=dict(title="Cumulative % of funds raised", gridcolor=GRID, ticksuffix="%", range=[0, 100]),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("The further the orange line bows away from the dotted diagonal, the more concentrated giving is among a few large donations.")
+
+        with st.expander(f"Ranked view of the top {min(top_n, 25)} donations (de-identified)"):
+            top_table = filtered.dropna(subset=["amount"]).sort_values("amount", ascending=False).head(min(top_n, 25))
+            top_table = top_table.assign(rank=range(1, len(top_table) + 1))[["rank", "amount", "channel", "source_file"]]
+            st.dataframe(top_table, hide_index=True, use_container_width=True)
+    else:
+        st.info("No donation amounts available for the selected filters.")
+
+# ---------------------------------------------------------------------------
+# Active Fundraisers → status + completion
+# ---------------------------------------------------------------------------
+elif view == "fund":
+    st.markdown("#### 🎯 Fundraiser Status & Completion")
+    left, right = st.columns(2)
+    with left:
+        status_counts = order_clean_final["status"].value_counts()
+        fig3 = go.Figure(go.Pie(
+            labels=status_counts.index, values=status_counts.values, hole=0.55,
+            marker=dict(colors=[STATUS_COLORS.get(s, "#898781") for s in status_counts.index],
+                        line=dict(color=SURFACE, width=2)),
+            textinfo="label+percent", textfont=dict(color="#ffffff", size=13),
+            hovertemplate="<b>%{label}</b>: %{value} (%{percent})<extra></extra>",
+        ))
+        fig3.update_layout(
+            height=360, margin=dict(l=10, r=10, t=30, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT, showlegend=False,
+            title=dict(text="Fundraiser Status", font=dict(size=14, color="#c3c2b7")),
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+    with right:
+        comp = order_clean_final["completion_pct"].dropna()
+        fig4 = go.Figure(go.Histogram(
+            x=comp, nbinsx=20, marker=dict(color="#2a78d6",
+                                            line=dict(color=SURFACE, width=1)),
+            hovertemplate="Completion: %{x:.0f}%<br>Fundraisers: %{y}<extra></extra>",
+        ))
+        if len(comp):
+            fig4.add_vline(x=comp.mean(), line=dict(color="#eb6834", width=2, dash="dash"))
+        fig4.update_layout(
+            height=360, margin=dict(l=10, r=10, t=30, b=10),
+            plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
+            title=dict(text="Completion % Distribution (dashed = average)", font=dict(size=14, color="#c3c2b7")),
+            xaxis=dict(title="Completion %", gridcolor=GRID, ticksuffix="%"),
+            yaxis=dict(title="Fundraisers", gridcolor=GRID), bargap=0.05,
+        )
+        st.plotly_chart(fig4, use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Top Channel → channel breakdown + momentum
+# ---------------------------------------------------------------------------
+elif view == "channel":
+    st.markdown("#### 🏆 Channel Breakdown")
     by_channel = by_channel_all
     seen = {}
     colors = [channel_color(c, seen) for c in by_channel.index]
@@ -326,104 +489,3 @@ with tab_channel:
                           "% of records": share.values}),
             hide_index=True, use_container_width=True,
         )
-
-# --- Concentration (Top X% deep dive) ---
-with tab_conc:
-    st.markdown("Explore how concentrated giving is — how much of the total comes from a small share of donations.")
-
-    pct = st.select_slider("Look at the top ___% of donations", options=[5, 10, 15, 20, 25, 30, 40, 50], value=10)
-
-    n = len(sorted_amounts)
-    if n > 0:
-        top_n = max(1, int(n * pct / 100))
-        top_share = sorted_amounts.head(top_n).sum() / sorted_amounts.sum() * 100
-
-        st.markdown(
-            f'<div class="callout">💡 The top <b>{pct}%</b> of donations '
-            f'(<b>{top_n}</b> of {n} records) account for <b>{top_share:.1f}%</b> of all funds raised.</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Lorenz curve: cumulative % of records vs cumulative % of amount raised
-        cum_pct_records = np.arange(1, n + 1) / n * 100
-        cum_pct_amount = sorted_amounts.cumsum() / sorted_amounts.sum() * 100
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=[0, 100], y=[0, 100], mode="lines", line=dict(color="#3a3a37", width=2, dash="dot"),
-            name="Perfectly even giving", hoverinfo="skip",
-        ))
-        fig.add_trace(go.Scatter(
-            x=cum_pct_records, y=cum_pct_amount, mode="lines",
-            line=dict(color="#eb6834", width=2), fill="tonexty", fillcolor="rgba(235,104,52,0.10)",
-            name="Actual giving",
-            hovertemplate="Top %{x:.0f}% of donations<br>= %{y:.1f}% of funds<extra></extra>",
-        ))
-        fig.add_trace(go.Scatter(
-            x=[pct], y=[top_share], mode="markers", marker=dict(size=11, color="#eb6834", line=dict(width=2, color=SURFACE)),
-            showlegend=False, hovertemplate=f"Top {pct}% = {top_share:.1f}% of funds<extra></extra>",
-        ))
-        fig.update_layout(
-            height=420, margin=dict(l=10, r=10, t=10, b=10),
-            plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, xanchor="left"),
-            xaxis=dict(title="Cumulative % of donations (largest first)", gridcolor=GRID, ticksuffix="%", range=[0, 100]),
-            yaxis=dict(title="Cumulative % of funds raised", gridcolor=GRID, ticksuffix="%", range=[0, 100]),
-        )
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("The further the orange line bows away from the dotted diagonal, the more concentrated giving is among a few large donations.")
-
-        with st.expander(f"Ranked view of the top {min(top_n, 25)} donations (de-identified)"):
-            top_table = filtered.dropna(subset=["amount"]).sort_values("amount", ascending=False).head(min(top_n, 25))
-            top_table = top_table.assign(rank=range(1, len(top_table) + 1))[["rank", "amount", "channel", "source_file"]]
-            st.dataframe(top_table, hide_index=True, use_container_width=True)
-    else:
-        st.info("No donation amounts available for the selected filters.")
-
-# --- Fundraisers ---
-with tab_fund:
-    left, right = st.columns(2)
-    with left:
-        status_counts = order_clean_final["status"].value_counts()
-        fig3 = go.Figure(go.Pie(
-            labels=status_counts.index, values=status_counts.values, hole=0.55,
-            marker=dict(colors=[STATUS_COLORS.get(s, "#898781") for s in status_counts.index],
-                        line=dict(color=SURFACE, width=2)),
-            textinfo="label+percent", textfont=dict(color="#ffffff", size=13),
-            hovertemplate="<b>%{label}</b>: %{value} (%{percent})<extra></extra>",
-        ))
-        fig3.update_layout(
-            height=360, margin=dict(l=10, r=10, t=30, b=10),
-            paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT, showlegend=False,
-            title=dict(text="Fundraiser Status", font=dict(size=14, color="#c3c2b7")),
-        )
-        st.plotly_chart(fig3, use_container_width=True)
-
-    with right:
-        comp = order_clean_final["completion_pct"].dropna()
-        fig4 = go.Figure(go.Histogram(
-            x=comp, nbinsx=20, marker=dict(color="#2a78d6",
-                                            line=dict(color=SURFACE, width=1)),
-            hovertemplate="Completion: %{x:.0f}%<br>Fundraisers: %{y}<extra></extra>",
-        ))
-        if len(comp):
-            fig4.add_vline(x=comp.mean(), line=dict(color="#eb6834", width=2, dash="dash"))
-        fig4.update_layout(
-            height=360, margin=dict(l=10, r=10, t=30, b=10),
-            plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
-            title=dict(text="Completion % Distribution (dashed = average)", font=dict(size=14, color="#c3c2b7")),
-            xaxis=dict(title="Completion %", gridcolor=GRID, ticksuffix="%"),
-            yaxis=dict(title="Fundraisers", gridcolor=GRID), bargap=0.05,
-        )
-        st.plotly_chart(fig4, use_container_width=True)
-
-# --- Data ---
-with tab_data:
-    st.caption(f"{len(filtered):,} rows match the current filters")
-    st.dataframe(filtered.sort_values("date", na_position="last"), use_container_width=True, hide_index=True)
-    st.download_button(
-        "⬇ Download filtered data as CSV",
-        filtered.to_csv(index=False).encode("utf-8"),
-        file_name="filtered_donations.csv",
-        mime="text/csv",
-    )
