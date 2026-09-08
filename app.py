@@ -72,78 +72,55 @@ donations_master, order_clean_final = load_data()
 st.markdown(
     """
     <style>
-    /* Card look for the container wrapping each stat button */
-    div[class*="st-key-card_"] {
-        position: relative;
-        background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 16px 18px 14px 18px;
-        height: 108px;
-        transition: border-color 0.15s ease, background 0.15s ease;
+    /* Make the KPI buttons bigger and left-aligned — targets Streamlit's own
+       stable button testid, not guessed internal class names, so this keeps
+       working regardless of theme or Streamlit version. */
+    div[data-testid="stButton"] button {
+        min-height: 74px;
+        height: auto !important;
+        text-align: left;
+        justify-content: flex-start;
+        align-items: center;
+        border-radius: 12px;
+        padding: 10px 14px;
     }
-    div[class*="st-key-card_"]:hover {
-        border-color: rgba(255,255,255,0.25);
-        background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
-    }
-    div[class*="st-key-active_"] {
-        border-color: #2a78d6 !important;
-        box-shadow: 0 0 0 1px #2a78d6;
-    }
-    /* Invisible full-card button that captures the click */
-    div[class*="st-key-card_"] button {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0;
-        cursor: pointer;
-        border: none;
+    div[data-testid="stButton"] button p,
+    div[data-testid="stButton"] button * {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        text-align: left;
+        font-size: 14px;
+        line-height: 1.35;
         margin: 0;
-        padding: 0;
     }
-    .kpi-icon { font-size: 20px; opacity: 0.85; pointer-events: none; }
-    .kpi-label {
-        font-size: 12px; color: #9c9b95; text-transform: uppercase;
-        letter-spacing: .06em; margin-top: 4px; pointer-events: none;
-    }
-    .kpi-value {
-        font-size: 26px; font-weight: 700; color: #ffffff;
-        font-variant-numeric: tabular-nums; margin-top: 2px; pointer-events: none;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .kpi-sub { font-size: 12px; color: #6f6e69; margin-top: 2px; pointer-events: none; }
-    .kpi-sub.up { color: #0ca30c; }
-    .kpi-sub.down { color: #e66767; }
     .dash-title { font-size: 34px; font-weight: 800; margin-bottom: 0px; }
-    .dash-sub { color: #9c9b95; margin-top: -6px; margin-bottom: 18px; }
-    .callout {
-        background: rgba(42,120,214,0.10); border: 1px solid rgba(42,120,214,0.35);
-        border-radius: 12px; padding: 14px 18px; font-size: 15px; color: #e7ecf3;
-        margin-bottom: 14px;
-    }
-    .section-hint { color: #6f6e69; font-size: 13px; margin: -4px 0 14px 2px; }
+    .dash-sub { margin-top: -6px; margin-bottom: 18px; opacity: 0.75; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
+def _set_view(view_key):
+    st.session_state.active_view = view_key
+
+
 def kpi_button(col, key, icon, label, value, sub, sub_class, is_active):
-    card_key = f"card_{key}" + ("__active_" if is_active else "")
+    # on_click fires (and updates session_state) BEFORE this script body
+    # re-runs, so the highlight below reflects the click on the same pass —
+    # no one-click lag.
     with col:
-        with st.container(key=card_key):
-            st.markdown(
-                f"""
-                <div class="kpi-icon">{icon}</div>
-                <div class="kpi-label">{label}</div>
-                <div class="kpi-value" title="{value}">{value}</div>
-                <div class="kpi-sub {sub_class}">{sub}</div>
-                """,
-                unsafe_allow_html=True,
-            )
-            clicked = st.button(f"View {label}", key=f"btn_{key}")
-    return clicked
+        st.button(
+            f"{icon} {label}: **{value}**",
+            key=f"btn_{key}",
+            use_container_width=True,
+            type="primary" if is_active else "secondary",
+            on_click=_set_view,
+            args=(key,),
+        )
+        if sub:
+            st.caption(sub)
 
 
 # ---------------------------------------------------------------------------
@@ -227,21 +204,16 @@ if "active_view" not in st.session_state:
     st.session_state.active_view = "total"
 
 c1, c2, c3, c4, c5 = st.columns(5)
-if kpi_button(c1, "total", "💰", "Total Raised (CAD)", f"${total:,.0f}", total_sub, total_sub_class,
-              st.session_state.active_view == "total"):
-    st.session_state.active_view = "total"
-if kpi_button(c2, "avg", "🧾", "Avg. Donation", f"${avg:,.0f}", "", "",
-              st.session_state.active_view == "avg"):
-    st.session_state.active_view = "avg"
-if kpi_button(c3, "top10", "🔥", "Top 10% Share", f"{top10_share:.1f}%", "", "",
-              st.session_state.active_view == "top10"):
-    st.session_state.active_view = "top10"
-if kpi_button(c4, "fund", "🎯", "Active Fundraisers", f"{active_n}/{total_fundraisers}", "", "",
-              st.session_state.active_view == "fund"):
-    st.session_state.active_view = "fund"
-if kpi_button(c5, "channel", "🏆", "Top Channel", top_channel_name, "", "",
-              st.session_state.active_view == "channel"):
-    st.session_state.active_view = "channel"
+kpi_button(c1, "total", "💰", "Total Raised (CAD)", f"${total:,.0f}", total_sub, total_sub_class,
+           st.session_state.active_view == "total")
+kpi_button(c2, "avg", "🧾", "Avg. Donation", f"${avg:,.0f}", "", "",
+           st.session_state.active_view == "avg")
+kpi_button(c3, "top10", "🔥", "Top 10% Share", f"{top10_share:.1f}%", "", "",
+           st.session_state.active_view == "top10")
+kpi_button(c4, "fund", "🎯", "Active Fundraisers", f"{active_n}/{total_fundraisers}", "", "",
+           st.session_state.active_view == "fund")
+kpi_button(c5, "channel", "🏆", "Top Channel", top_channel_name, "", "",
+           st.session_state.active_view == "channel")
 
 st.write("")
 view = st.session_state.active_view
@@ -337,7 +309,7 @@ elif view == "avg":
 # ---------------------------------------------------------------------------
 elif view == "top10":
     st.markdown("#### 🔥 Donation Concentration")
-    st.markdown('<div class="section-hint">Explore how concentrated giving is — how much of the total comes from a small share of donations.</div>', unsafe_allow_html=True)
+    st.caption("Explore how concentrated giving is — how much of the total comes from a small share of donations.")
 
     pct = st.select_slider("Look at the top ___% of donations", options=[5, 10, 15, 20, 25, 30, 40, 50], value=10)
 
@@ -346,10 +318,9 @@ elif view == "top10":
         top_n = max(1, int(n * pct / 100))
         top_share = sorted_amounts.head(top_n).sum() / sorted_amounts.sum() * 100
 
-        st.markdown(
-            f'<div class="callout">💡 The top <b>{pct}%</b> of donations '
-            f'(<b>{top_n}</b> of {n} records) account for <b>{top_share:.1f}%</b> of all funds raised.</div>',
-            unsafe_allow_html=True,
+        st.info(
+            f"💡 The top **{pct}%** of donations "
+            f"(**{top_n}** of {n} records) account for **{top_share:.1f}%** of all funds raised."
         )
 
         cum_pct_records = np.arange(1, n + 1) / n * 100
