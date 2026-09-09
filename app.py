@@ -61,10 +61,16 @@ def load_data():
         ignore_index=True,
     )
     donations_master["date"] = pd.to_datetime(donations_master["date"], errors="coerce")
-    return donations_master, order_clean_final
+
+    # Fee/conversion data is optional — only present once the Colab export
+    # keeps the extra columns (see instructions). Detect gracefully so the
+    # rest of the dashboard doesn't break on older exports.
+    has_fee_data = {"net_after_fee", "fee_amount"}.issubset(brooks_clean.columns)
+
+    return donations_master, order_clean_final, brooks_clean, has_fee_data
 
 
-donations_master, order_clean_final = load_data()
+donations_master, order_clean_final, brooks_clean, has_fee_data = load_data()
 
 # ---------------------------------------------------------------------------
 # Styling
@@ -197,13 +203,21 @@ if len(by_channel_all) > 0:
 else:
     top_channel_name = "n/a"
 
+if has_fee_data:
+    fee_gross = brooks_clean["amount"].sum()
+    fee_net = brooks_clean["net_after_fee"].sum()
+    fee_rate = (brooks_clean["fee_amount"].sum() / fee_gross * 100) if fee_gross else 0
+    fee_value = f"{fee_rate:.1f}%"
+else:
+    fee_value = "n/a"
+
 # ---------------------------------------------------------------------------
 # KPI row — each card is a clickable button that switches the section below
 # ---------------------------------------------------------------------------
 if "active_view" not in st.session_state:
     st.session_state.active_view = "total"
 
-c1, c2, c3, c4, c5 = st.columns(5)
+c1, c2, c3, c4, c5, c6 = st.columns(6)
 kpi_button(c1, "total", "💰", "Total Raised (CAD)", f"${total:,.0f}", total_sub, total_sub_class,
            st.session_state.active_view == "total")
 kpi_button(c2, "avg", "🧾", "Avg. Donation", f"${avg:,.0f}", "", "",
@@ -214,6 +228,8 @@ kpi_button(c4, "fund", "🎯", "Active Fundraisers", f"{active_n}/{total_fundrai
            st.session_state.active_view == "fund")
 kpi_button(c5, "channel", "🏆", "Top Channel", top_channel_name, "", "",
            st.session_state.active_view == "channel")
+kpi_button(c6, "fee", "💳", "Fee Rate (BFI)", fee_value, "", "",
+           st.session_state.active_view == "fee")
 
 st.write("")
 view = st.session_state.active_view
@@ -460,3 +476,65 @@ elif view == "channel":
                           "% of records": share.values}),
             hide_index=True, use_container_width=True,
         )
+
+# ---------------------------------------------------------------------------
+# Fee Rate → conversion efficiency (Brooks Individual Fundraisers only —
+# this is the only source with deposit/transfer-fee data)
+# ---------------------------------------------------------------------------
+elif view == "fee":
+    st.markdown("#### 💳 Fee & Conversion Efficiency")
+    st.caption("How much of what's raised through Brooks' individual fundraisers actually converts to usable funds, after transfer fees. Not available for other channels — only BFI.xlsx records deposit vs. transferred amounts.")
+
+    if not has_fee_data:
+        st.info(
+            "Fee data isn't in bfi.csv yet. In the Colab notebook's Brooks-cleaning cell, keep the "
+            "`deposited` and the fee-adjusted amount column (e.g. \"amount with transfer fee taken out\") "
+            "instead of dropping them, save them as `net_after_fee` and `fee_amount` "
+            "(`fee_amount = amount - net_after_fee`), and re-export bfi.csv. "
+            "Once those two columns are present, this section fills in automatically."
+        )
+    else:
+        gross = brooks_clean["amount"].sum()
+        net = brooks_clean["net_after_fee"].sum()
+        fees = brooks_clean["fee_amount"].sum()
+        rate = (fees / gross * 100) if gross else 0
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Gross Raised", f"${gross:,.0f}")
+        m2.metric("Net After Fees", f"${net:,.0f}")
+        m3.metric("Total Fees Paid", f"${fees:,.0f}")
+        m4.metric("Overall Fee Rate", f"{rate:.1f}%")
+
+        left, right = st.columns(2)
+        with left:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=["Gross raised", "Net after fees"], y=[gross, net],
+                                  marker=dict(color=["#2a78d6", "#1baf7a"]),
+                                  hovertemplate="%{x}: $%{y:,.0f}<extra></extra>"))
+            fig.update_layout(
+                height=360, margin=dict(l=10, r=10, t=40, b=10),
+                plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
+                yaxis=dict(title="Amount (CAD)", gridcolor=GRID, tickprefix="$"),
+                title=dict(text="Gross vs. Net", font=dict(size=14, color="#c3c2b7")),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        with right:
+            per_fundraiser_rate = (brooks_clean["fee_amount"] / brooks_clean["amount"] * 100).dropna()
+            fig2 = go.Figure(go.Histogram(
+                x=per_fundraiser_rate, nbinsx=15, marker=dict(color="#eb6834", line=dict(color=SURFACE, width=1)),
+                hovertemplate="Fee rate: %{x:.1f}%<br>Fundraisers: %{y}<extra></extra>",
+            ))
+            fig2.update_layout(
+                height=360, margin=dict(l=10, r=10, t=40, b=10),
+                plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
+                xaxis=dict(title="Fee rate per fundraiser (%)", gridcolor=GRID, ticksuffix="%"),
+                yaxis=dict(title="Fundraisers", gridcolor=GRID), bargap=0.05,
+                title=dict(text="Fee Rate Distribution", font=dict(size=14, color="#c3c2b7")),
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+
+        with st.expander("Per-fundraiser detail (de-identified)"):
+            detail = brooks_clean[["amount", "net_after_fee", "fee_amount", "channel"]].copy()
+            detail["fee_rate_%"] = (detail["fee_amount"] / detail["amount"] * 100).round(1)
+            st.dataframe(detail, hide_index=True, use_container_width=True)
