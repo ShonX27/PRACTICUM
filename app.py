@@ -18,20 +18,27 @@ DATA_DIR = Path("data")
 # is filtered in or out. Order follows the validated categorical palette.
 # ---------------------------------------------------------------------------
 CHANNEL_ORDER = ["DonorBox", "GoFundMe", "E-transfer to our bank", "PayPal", "Unknown"]
+
+# --- OBA brand palette (sampled from the logo) -----------------------------
+OBA_ORANGE = "#E24007"   # primary — brand mark, primary buttons/lines
+OBA_GREEN = "#009E52"    # secondary — positive/active states
+OBA_PEACH = "#FFA88D"    # accent — reference lines, secondary highlights
+OBA_GOLD = "#C98A00"     # 5th categorical hue, kept muted so it doesn't compete with orange
+
 CHANNEL_COLORS = {
-    "DonorBox": "#2a78d6",              # blue
-    "GoFundMe": "#1baf7a",              # aqua
-    "E-transfer to our bank": "#eb6834",  # orange
-    "PayPal": "#eda100",                # yellow
+    "DonorBox": OBA_ORANGE,
+    "GoFundMe": OBA_GREEN,
+    "E-transfer to our bank": OBA_PEACH,
+    "PayPal": OBA_GOLD,
     "Unknown": "#898781",               # muted — not a real identity
 }
 FALLBACK_COLORS = ["#4a3aa7", "#e87ba4", "#e34948", "#008300"]
 
-STATUS_COLORS = {"Active": "#0ca30c", "Inactive": "#898781"}
+STATUS_COLORS = {"Active": OBA_GREEN, "Inactive": "#898781"}
 
-CHART_FONT = dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#c3c2b7")
-SURFACE = "#161615"
-GRID = "#2c2c2a"
+CHART_FONT = dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#e8d9d3")
+SURFACE = "#1a1512"      # warm charcoal instead of neutral gray, ties to the logo's warm tones
+GRID = "#332922"
 
 
 def channel_color(name: str, seen: dict) -> str:
@@ -100,8 +107,8 @@ st.markdown(
         line-height: 1.35;
         margin: 0;
     }
-    .dash-title { font-size: 34px; font-weight: 800; margin-bottom: 0px; }
-    .dash-sub { margin-top: -6px; margin-bottom: 18px; opacity: 0.75; }
+    .dash-title { font-size: 34px; font-weight: 800; margin-bottom: 0px; color: #E24007; }
+    .dash-sub { margin-top: -6px; margin-bottom: 18px; opacity: 0.85; color: #FFA88D; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -247,9 +254,9 @@ if view == "total":
             fig.add_trace(go.Scatter(
                 x=monthly["month"], y=monthly["amount"],
                 mode="lines+markers",
-                line=dict(color="#2a78d6", width=2, shape="spline"),
-                marker=dict(size=9, color="#2a78d6", line=dict(width=2, color=SURFACE)),
-                fill="tozeroy", fillcolor="rgba(42,120,214,0.12)",
+                line=dict(color=OBA_ORANGE, width=2, shape="spline"),
+                marker=dict(size=9, color=OBA_ORANGE, line=dict(width=2, color=SURFACE)),
+                fill="tozeroy", fillcolor="rgba(226,64,7,0.14)",
                 hovertemplate="<b>%{x|%b %Y}</b><br>Raised: $%{y:,.0f}<br>Records: %{customdata}<extra></extra>",
                 customdata=monthly["n"],
                 name="Total raised",
@@ -296,10 +303,10 @@ elif view == "avg":
     amt = filtered["amount"].dropna()
     if len(amt):
         fig = go.Figure(go.Histogram(
-            x=amt, nbinsx=30, marker=dict(color="#2a78d6", line=dict(color=SURFACE, width=1)),
+            x=amt, nbinsx=30, marker=dict(color=OBA_ORANGE, line=dict(color=SURFACE, width=1)),
             hovertemplate="Amount: $%{x:,.0f}<br>Count: %{y}<extra></extra>",
         ))
-        fig.add_vline(x=amt.mean(), line=dict(color="#eb6834", width=2, dash="dash"))
+        fig.add_vline(x=amt.mean(), line=dict(color=OBA_PEACH, width=2, dash="dash"))
         fig.update_layout(
             height=400, margin=dict(l=10, r=10, t=10, b=10),
             plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
@@ -349,12 +356,12 @@ elif view == "top10":
         ))
         fig.add_trace(go.Scatter(
             x=cum_pct_records, y=cum_pct_amount, mode="lines",
-            line=dict(color="#eb6834", width=2), fill="tonexty", fillcolor="rgba(235,104,52,0.10)",
+            line=dict(color=OBA_ORANGE, width=2), fill="tonexty", fillcolor="rgba(226,64,7,0.12)",
             name="Actual giving",
             hovertemplate="Top %{x:.0f}% of donations<br>= %{y:.1f}% of funds<extra></extra>",
         ))
         fig.add_trace(go.Scatter(
-            x=[pct], y=[top_share], mode="markers", marker=dict(size=11, color="#eb6834", line=dict(width=2, color=SURFACE)),
+            x=[pct], y=[top_share], mode="markers", marker=dict(size=11, color=OBA_ORANGE, line=dict(width=2, color=SURFACE)),
             showlegend=False, hovertemplate=f"Top {pct}% = {top_share:.1f}% of funds<extra></extra>",
         ))
         fig.update_layout(
@@ -399,12 +406,12 @@ elif view == "fund":
     with right:
         comp = order_clean_final["completion_pct"].dropna()
         fig4 = go.Figure(go.Histogram(
-            x=comp, nbinsx=20, marker=dict(color="#2a78d6",
+            x=comp, nbinsx=20, marker=dict(color=OBA_ORANGE,
                                             line=dict(color=SURFACE, width=1)),
             hovertemplate="Completion: %{x:.0f}%<br>Fundraisers: %{y}<extra></extra>",
         ))
         if len(comp):
-            fig4.add_vline(x=comp.mean(), line=dict(color="#eb6834", width=2, dash="dash"))
+            fig4.add_vline(x=comp.mean(), line=dict(color=OBA_PEACH, width=2, dash="dash"))
         fig4.update_layout(
             height=360, margin=dict(l=10, r=10, t=30, b=10),
             plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
@@ -509,7 +516,7 @@ elif view == "fee":
         with left:
             fig = go.Figure()
             fig.add_trace(go.Bar(x=["Gross raised", "Net after fees"], y=[gross, net],
-                                  marker=dict(color=["#2a78d6", "#1baf7a"]),
+                                  marker=dict(color=[OBA_ORANGE, OBA_GREEN]),
                                   hovertemplate="%{x}: $%{y:,.0f}<extra></extra>"))
             fig.update_layout(
                 height=360, margin=dict(l=10, r=10, t=40, b=10),
@@ -522,7 +529,7 @@ elif view == "fee":
         with right:
             per_fundraiser_rate = (brooks_clean["fee_amount"] / brooks_clean["amount"] * 100).dropna()
             fig2 = go.Figure(go.Histogram(
-                x=per_fundraiser_rate, nbinsx=15, marker=dict(color="#eb6834", line=dict(color=SURFACE, width=1)),
+                x=per_fundraiser_rate, nbinsx=15, marker=dict(color=OBA_PEACH, line=dict(color=SURFACE, width=1)),
                 hovertemplate="Fee rate: %{x:.1f}%<br>Fundraisers: %{y}<extra></extra>",
             ))
             fig2.update_layout(
@@ -534,7 +541,7 @@ elif view == "fee":
             )
             st.plotly_chart(fig2, use_container_width=True)
 
-        with st.expander("Per-fundraiser detail (de-identified)"):
+        with st.expander("Per-fundraiser detail (de-identified)", expanded=True):
             detail = brooks_clean[["amount", "net_after_fee", "fee_amount", "channel"]].copy()
             detail["fee_rate_%"] = (detail["fee_amount"] / detail["amount"] * 100).round(1)
             st.dataframe(detail, hide_index=True, use_container_width=True)
