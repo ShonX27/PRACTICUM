@@ -36,9 +36,9 @@ FALLBACK_COLORS = ["#4a3aa7", "#e87ba4", "#e34948", "#008300"]
 
 STATUS_COLORS = {"Active": OBA_GREEN, "Inactive": "#898781"}
 
-CHART_FONT = dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#e8d9d3")
-SURFACE = "#1a1512"      # warm charcoal instead of neutral gray, ties to the logo's warm tones
-GRID = "#332922"
+CHART_FONT = dict(family="system-ui, -apple-system, 'Segoe UI', sans-serif", color="#2B211D")
+SURFACE = "#ffffff"      # white plot background — matches the light app theme
+GRID = "#e4ded9"         # warm light-gray gridlines, visible on white without competing with data
 
 
 def channel_color(name: str, seen: dict) -> str:
@@ -108,7 +108,7 @@ st.markdown(
         margin: 0;
     }
     .dash-title { font-size: 34px; font-weight: 800; margin-bottom: 0px; color: #E24007; }
-    .dash-sub { margin-top: -6px; margin-bottom: 18px; opacity: 0.85; color: #FFA88D; }
+    .dash-sub { margin-top: -6px; margin-bottom: 18px; opacity: 0.9; color: #6b5850; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -306,7 +306,7 @@ elif view == "avg":
             x=amt, nbinsx=30, marker=dict(color=OBA_ORANGE, line=dict(color=SURFACE, width=1)),
             hovertemplate="Amount: $%{x:,.0f}<br>Count: %{y}<extra></extra>",
         ))
-        fig.add_vline(x=amt.mean(), line=dict(color=OBA_PEACH, width=2, dash="dash"))
+        fig.add_vline(x=amt.mean(), line=dict(color=OBA_GREEN, width=2, dash="dash"))
         fig.update_layout(
             height=400, margin=dict(l=10, r=10, t=10, b=10),
             plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
@@ -318,7 +318,7 @@ elif view == "avg":
     else:
         st.info("No donation amounts available for the selected filters.")
 
-    with st.expander("View & download raw records"):
+    with st.expander("View & download raw records", expanded=True):
         st.dataframe(filtered.sort_values("date", na_position="last"), use_container_width=True, hide_index=True)
         st.download_button(
             "⬇ Download filtered data as CSV",
@@ -374,7 +374,7 @@ elif view == "top10":
         st.plotly_chart(fig, use_container_width=True)
         st.caption("The further the orange line bows away from the dotted diagonal, the more concentrated giving is among a few large donations.")
 
-        with st.expander(f"Ranked view of the top {min(top_n, 25)} donations (de-identified)"):
+        with st.expander(f"Ranked view of the top {min(top_n, 25)} donations (de-identified)", expanded=True):
             top_table = filtered.dropna(subset=["amount"]).sort_values("amount", ascending=False).head(min(top_n, 25))
             top_table = top_table.assign(rank=range(1, len(top_table) + 1))[["rank", "amount", "channel", "source_file"]]
             st.dataframe(top_table, hide_index=True, use_container_width=True)
@@ -411,7 +411,7 @@ elif view == "fund":
             hovertemplate="Completion: %{x:.0f}%<br>Fundraisers: %{y}<extra></extra>",
         ))
         if len(comp):
-            fig4.add_vline(x=comp.mean(), line=dict(color=OBA_PEACH, width=2, dash="dash"))
+            fig4.add_vline(x=comp.mean(), line=dict(color=OBA_GREEN, width=2, dash="dash"))
         fig4.update_layout(
             height=360, margin=dict(l=10, r=10, t=30, b=10),
             plot_bgcolor=SURFACE, paper_bgcolor="rgba(0,0,0,0)", font=CHART_FONT,
@@ -476,7 +476,7 @@ elif view == "channel":
     else:
         st.caption("Need at least two months of dated records in the current filter to show momentum.")
 
-    with st.expander("Channel share as a table (accessible view)"):
+    with st.expander("Channel share as a table (accessible view)", expanded=True):
         share = (filtered["channel"].value_counts(normalize=True) * 100).round(1)
         st.dataframe(
             pd.DataFrame({"channel": share.index, "raised": by_channel.reindex(share.index).values,
@@ -529,7 +529,7 @@ elif view == "fee":
         with right:
             per_fundraiser_rate = (brooks_clean["fee_amount"] / brooks_clean["amount"] * 100).dropna()
             fig2 = go.Figure(go.Histogram(
-                x=per_fundraiser_rate, nbinsx=15, marker=dict(color=OBA_PEACH, line=dict(color=SURFACE, width=1)),
+                x=per_fundraiser_rate, nbinsx=15, marker=dict(color=OBA_PEACH, line=dict(color="#C9613B", width=1)),
                 hovertemplate="Fee rate: %{x:.1f}%<br>Fundraisers: %{y}<extra></extra>",
             ))
             fig2.update_layout(
