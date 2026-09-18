@@ -224,7 +224,7 @@ else:
 if "active_view" not in st.session_state:
     st.session_state.active_view = "total"
 
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 kpi_button(c1, "total", "💰", "Total Raised (CAD)", f"${total:,.0f}", total_sub, total_sub_class,
            st.session_state.active_view == "total")
 kpi_button(c2, "avg", "🧾", "Avg. Donation", f"${avg:,.0f}", "", "",
@@ -237,6 +237,16 @@ kpi_button(c5, "channel", "🏆", "Top Channel", top_channel_name, "", "",
            st.session_state.active_view == "channel")
 kpi_button(c6, "fee", "💳", "Fee Rate (BFI)", fee_value, "", "",
            st.session_state.active_view == "fee")
+kpi_button(
+    c7,
+    "quality",
+    "⚠️",
+    "Data Gaps",
+    "Review",
+    "",
+    "",
+    st.session_state.active_view == "quality",
+)
 
 st.write("")
 view = st.session_state.active_view
@@ -545,3 +555,183 @@ elif view == "fee":
             detail = brooks_clean[["amount", "net_after_fee", "fee_amount", "channel"]].copy()
             detail["fee_rate_%"] = (detail["fee_amount"] / detail["amount"] * 100).round(1)
             st.dataframe(detail, hide_index=True, use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Data Quality → known information, gaps, and reconciliation risks
+# ---------------------------------------------------------------------------
+elif view == "quality":
+    st.markdown("#### ⚠️ Data Gaps / Information Needed")
+
+    st.caption(
+        "These items distinguish available information from unresolved gaps "
+        "and identify where the current fundraising sources require clarification, "
+        "standardization, reconciliation, or verification."
+    )
+
+    st.warning(
+        "Key reconciliation risk: some donation records in the PaliNights Fund "
+        "workbook are also present in the OBA Donations dataset. Combining the "
+        "two sources without a defined deduplication rule may double-count donations "
+        "and produce inaccurate fundraising totals."
+    )
+
+    pair_a_gaps = pd.DataFrame(
+        [
+            {
+                "program": "OBA Donations",
+                "known_information":
+                    "Detailed donation information is available, including campaign, "
+                    "amount, currency, fees, donation type, date, status, and transaction fields.",
+                "information_gap":
+                    "The original source requires structural cleaning and validation. "
+                    "Inconsistent CSV formatting can cause fields to shift during import.",
+                "status": "Needs structural cleanup",
+            },
+
+            {
+                "program": "OBA Donations + PaliNights Fund",
+                "known_information":
+                    "Both datasets contain donation records and include some of the "
+                    "same fundraising activity.",
+                "information_gap":
+                    "Some PaliNights donation records are duplicated in OBA Donations. "
+                    "Combining the files without reconciliation may double-count funds "
+                    "and overstate Total Raised.",
+                "status": "Needs reconciliation / deduplication",
+            },
+
+            {
+                "program": "PaliNights Fund",
+                "known_information":
+                    "Donation information is recorded across several sources, including "
+                    "e-transfer, DonorBox, Eventbrite, and event-related collections.",
+                "information_gap":
+                    "Payment sources are stored in separate tabs with different structures, "
+                    "making automated consolidation and comparison difficult.",
+                "status": "Needs standardized template",
+            },
+
+            {
+                "program": "PaliNights Fund",
+                "known_information":
+                    "Summary and follow-up sheets contain donation and payment-source information.",
+                "information_gap":
+                    "Some transactions may appear in both summary/follow-up sheets and "
+                    "individual payment-source tabs.",
+                "status": "Needs source-of-truth rule",
+            },
+
+            {
+                "program": "GoFundMe / Order Data",
+                "known_information":
+                    "Fundraiser status, completion percentage, crowdfunding links, "
+                    "social-media information, and operational notes are available.",
+                "information_gap":
+                    "The reporting date or refresh frequency of fundraiser status and "
+                    "completion values is unclear, making current performance difficult to verify.",
+                "status": "Needs update process",
+            },
+
+            {
+                "program": "GoFundMe / Order Data",
+                "known_information":
+                    "Fundraiser, crowdfunding, contact, and social-media information "
+                    "are captured across several sheets.",
+                "information_gap":
+                    "Some worksheets contain unrelated data blocks, blank separator columns, "
+                    "and inconsistent field structures, limiting reliable automated analysis.",
+                "status": "Needs restructuring",
+            },
+
+            {
+                "program": "GoFundMe / Order Data",
+                "known_information":
+                    "Operational records contain names, emails, phone numbers, "
+                    "campaign links, and social-media information.",
+                "information_gap":
+                    "Personal information is not required for aggregate analysis and "
+                    "should be removed from analytical datasets and dashboards.",
+                "status": "Needs de-identification",
+            },
+
+            {
+                "program": "Brooks Individual Fundraisers",
+                "known_information":
+                    "Fundraiser records contain financial fields related to amounts "
+                    "raised, transferred, deposited, and transfer-related amounts.",
+                "information_gap":
+                    "The business meaning and relationship of the financial fields "
+                    "need confirmation before fee-rate, net-fund, or efficiency metrics "
+                    "can be interpreted reliably.",
+                "status": "Needs field definitions",
+            },
+
+            {
+                "program": "Cross-file Fundraising Data",
+                "known_information":
+                    "OBA maintains fundraising information across DonorBox, e-transfer, "
+                    "events, GoFundMe, and individual fundraiser sources.",
+                "information_gap":
+                    "There is no consistent shared identifier across all files to determine "
+                    "whether records refer to the same donation, campaign, fundraiser, "
+                    "or transaction.",
+                "status": "Needs common ID",
+            },
+
+            {
+                "program": "Campaign / Fundraiser Tracking",
+                "known_information":
+                    "Campaign names, fundraiser links, and fundraising-source information "
+                    "are available across multiple files.",
+                "information_gap":
+                    "Campaign and fundraiser naming is not standardized across datasets, "
+                    "so cross-file matching may require manual interpretation.",
+                "status": "Needs standardized campaign ID",
+            },
+
+            {
+                "program": "Total Raised",
+                "known_information":
+                    "Fundraising amounts can be calculated from the available source files.",
+                "information_gap":
+                    "A documented source-of-truth rule is needed to identify which files "
+                    "and records should contribute to the official Total Raised figure. "
+                    "Current cross-file duplication creates a risk of inaccurate totals.",
+                "status": "Needs reconciliation rule",
+            },
+
+            {
+                "program": "Data Governance",
+                "known_information":
+                    "OBA already captures substantial fundraising and operational information.",
+                "information_gap":
+                    "Datasets use different structures, field names, definitions, and levels "
+                    "of detail, increasing manual cleaning and limiting integration.",
+                "status": "Needs standardized reporting model",
+            },
+        ]
+    )
+
+    st.dataframe(
+        pair_a_gaps,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "program": st.column_config.TextColumn(
+                "program",
+                width="medium",
+            ),
+            "known_information": st.column_config.TextColumn(
+                "known_information",
+                width="large",
+            ),
+            "information_gap": st.column_config.TextColumn(
+                "information_gap",
+                width="large",
+            ),
+            "status": st.column_config.TextColumn(
+                "status",
+                width="medium",
+            ),
+        },
+    )
